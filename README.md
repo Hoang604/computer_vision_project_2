@@ -95,33 +95,19 @@ The project is structured into several key Python files:
 The [train_diffusion.py](http://_vscodecontentref_/3) script is used to train the model. Here are some of the key command-line arguments:
 
 *   `--image_folder`: Path to your training image dataset.
-    *   Default: `/media/tuannl1/heavy_weight/data/cv_data/images256x256`
 *   `--img_size`: Target size for the high-resolution images (e.g., 256 for 256x256).
-    *   Default: `256`
 *   `--downscale_factor`: Factor by which to downscale the original image to create the low-resolution input.
-    *   Default: `4`
 *   `--epochs`: Number of training epochs.
-    *   Default: `40`
 *   `--batch_size`: Batch size per device.
-    *   Default: `32`
 *   `--accumulation_steps`: Gradient accumulation steps. Effective batch size will be `batch_size * accumulation_steps`.
-    *   Default: `64`
 *   `--learning_rate`: Learning rate for the optimizer.
-    *   Default: `2e-5`
 *   `--timesteps`: Number of diffusion timesteps.
-    *   Default: `1000`
 *   `--diffusion_mode`: Prediction mode for the diffusion model. Options: `"v_prediction"` or `"noise"`.
-    *   Default: `"v_prediction"`
 *   `--unet_base_dim`: Base channel dimension for the U-Net.
-    *   Default: `32`
 *   `--unet_dim_mults`: Channel multipliers for each U-Net resolution level (e.g., `1 2 4`).
-    *   Default: `1 2 4`
 *   `--log_dir`: Base directory for TensorBoard logs.
-    *   Default: `/media/hoangdv/cv_logs`
 *   `--checkpoint_dir`: Base directory for saving model checkpoints.
-    *   Default: `/media/hoangdv/cv_checkpoints`
 *   `--weights_path`: Path to a pre-trained model checkpoint to resume training.
-    *   Default: `None`
 
 **Example training command:**
 
