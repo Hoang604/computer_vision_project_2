@@ -3,7 +3,6 @@ from torch import nn
 from torch.nn import functional as F
 import math
 from PIL import Image
-import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 import os
 import torchvision.transforms.functional as TF

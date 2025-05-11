@@ -1,0 +1,11 @@
+bitsandbytes==0.45.5
+diffusers==0.33.1
+numpy==2.2.5
+opencv_python==4.11.0.86
+Pillow==11.2.1
+Requests==2.32.3
+scipy==1.15.3
+torch==2.7.0
+torchinfo==1.8.0
+torchvision==0.22.0
+tqdm==4.67.1

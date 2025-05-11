@@ -59,14 +59,19 @@ The project is structured into several key Python files:
 
 1.  **Clone the repository (if applicable):**
     ```bash
-    git clone <your-repository-url>
-    cd <your-project-directory>
+    git clone <https://github.com/Hoang604/computer_vision_project_2.git>
+    cd <https://github.com/Hoang604/computer_vision_project_2.git>
     ```
 
 2.  **Create a Python virtual environment (recommended):**
     ```bash
     python3 -m venv venv
     source venv/bin/activate
+    ```
+    or if you use conda
+    ```bash
+    conda create -n env
+    conda activate env
     ```
 
 3.  **Install dependencies:**
@@ -75,21 +80,7 @@ The project is structured into several key Python files:
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 # Or your specific CUDA version
     pip install numpy opencv-python Pillow tqdm bitsandbytes diffusers tensorboard torchinfo
     ```
-    It's good practice to create a `requirements.txt` file:
-    ```
-    torch
-    torchvision
-    torchaudio
-    numpy
-    opencv-python
-    Pillow
-    tqdm
-    bitsandbytes
-    diffusers
-    tensorboard
-    torchinfo
-    ```
-    Then install with: `pip install -r requirements.txt`
+    or you can directly install all dependencies using `pip install -r requirements.txt`
 
 ## Usage
 
