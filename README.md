@@ -1,67 +1,148 @@
-# Computer Vision Super-Resolution Project (DDPM)  This project implements a Denoising Diffusion Probabilistic Model (DDPM) for image super-resolution. The goal is to upscale low-resolution images to higher resolutions while generating realistic details. The model utilizes a U-Net architecture with attention mechanisms and is trained to predict either the noise added during the forward diffusion process or a "v-prediction" target.  ## Core Components  The project is structured into several key Python files:  * **`diffusion.py`**:     * `DiffusionModel`: Implements the core DDPM logic, including the forward (noising) and reverse (denoising) processes. It handles the cosine noise schedule, training loop (with gradient accumulation, TensorBoard logging, checkpointing), and model saving/loading. Supports "v-prediction" and "noise" prediction modes.     * `ResidualGenerator`: A class for generating high-resolution images from low-resolution inputs using a trained diffusion model and a scheduler (e.g., `DDIMScheduler` from the `diffusers` library). It can operate in "v-prediction" or "noise" mode based on the trained model.  * **`unet.py`**:     * `UNet`: Defines the U-Net architecture, which serves as the noise predictor in the diffusion model. It incorporates residual blocks, sinusoidal position embeddings for time steps, and attention mechanisms (`BasicTransformerBlock`) for improved feature extraction and context integration.     * `BasicTransformerBlock`: A transformer block that combines self-attention and conditional cross-attention (if context is provided) with feed-forward layers.     * `ImageContextExtractor`: Extracts contextual features from an image, which can be used for conditioning the U-Net (e.g., using the low-resolution image as context).  * **`train_diffusion.py`**:     * The main script for training the diffusion model. It handles dataset loading, model initialization, optimizer setup (using `bitsandbytes` for 8-bit AdamW), and orchestrates the training process using the `DiffusionModel` class. It includes argument parsing for configuring training parameters.  * **`util.py`**:     * `ImageDataset`: A PyTorch `Dataset` class for loading and preprocessing images. It generates low-resolution images, corresponding upscaled versions (using a provided upscale function like bicubic), the original high-resolution target, and the residual between the original and the upscaled image. It also supports data augmentation (horizontal flipping).     * `SinusoidalPositionEmbeddings`: Generates sinusoidal embeddings for time steps, used to inform the U-Net about the current noise level.     * `ResidualBlock`: A standard residual block with GroupNorm, SiLU activation, and optional time embedding conditioning, used within the U-Net.     * `MultiHeadAttentionBlock`: A self-attention block (though `BasicTransformerBlock` in `unet.py` seems to be the primary one used for more advanced attention).  * **`bicubic.py`**:     * `upscale_image`: A utility function to upscale images using bicubic interpolation. It can handle various input types (file paths, NumPy arrays, PyTorch tensors) and supports different scale factors. This is likely used by `ImageDataset` to create the upscaled version of the low-resolution image for training or as a baseline.  ## Features  * **Denoising Diffusion Probabilistic Model (DDPM)** for image super-resolution. * Supports two prediction modes for the diffusion model:     * **Noise prediction**: The model learns to predict the noise added to the image.     * **V-prediction**: The model learns to predict a target 'v' related to both the noise and the clean image. * **U-Net Architecture**: A robust U-Net with:     * Residual Blocks for stable training.     * Sinusoidal Time Embeddings to condition on noise levels.     * Self-Attention and Cross-Attention (`BasicTransformerBlock`) for capturing global dependencies and integrating contextual information (e.g., from the low-resolution image). * **Cosine Noise Schedule**: For defining the variance of noise added at each diffusion timestep. * **Conditional Generation**: The U-Net can be conditioned on context (e.g., low-resolution image features extracted by `ImageContextExtractor`). * **Training Script (`train_diffusion.py`)**:     * Configurable training parameters via command-line arguments.     * Gradient accumulation to simulate larger batch sizes.     * Integration with `bitsandbytes` for memory-efficient 8-bit optimizers (AdamW8bit).     * TensorBoard logging for monitoring training progress (loss, generated image samples).     * Checkpointing to save the best model and resume training. * **Flexible Image Dataset (`ImageDataset`)**:     * Loads images and prepares low-resolution inputs, bicubic upscaled versions, and high-resolution targets.     * Calculates the residual image (difference between HR original and bicubic upscaled LR).     * Supports data augmentation (horizontal flipping).     * Normalizes images to the `[-1, 1]` range. * **Bicubic Upscaling Utility (`bicubic.py`)**: A standalone module for performing bicubic interpolation, useful for data preparation or as a baseline comparison. * **Inference/Sampling (`ResidualGenerator`)**:     * Uses `diffusers.DDIMScheduler` for efficient sampling.     * Can generate images based on a trained model operating in either "v-prediction" or "noise" mode.  ## Setup and Installation  1.  **Clone the repository (if applicable):**     ```bash     git clone <your-repository-url>     cd <your-project-directory>     ```  2.  **Create a Python virtual environment (recommended):**     ```bash     python3 -m venv venv     source venv/bin/activate     ```  3.  **Install dependencies:**     You will need Python 3.x and the following core libraries. You can install them using pip:     ```bash     pip install torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/cu118](https://download.pytorch.org/whl/cu118) # Or your specific CUDA version     pip install numpy opencv-python Pillow tqdm bitsandbytes diffusers tensorboard torchinfo     ```     It's good practice to create a `requirements.txt` file:     ```     torch     torchvision     torchaudio     numpy     opencv-python     Pillow     tqdm     bitsandbytes     diffusers     tensorboard     torchinfo     ```     Then install with: `pip install -r requirements.txt`  ## Usage  ### 1. Prepare your Dataset  * Place your high-resolution training images in a single folder. * The `ImageDataset` in `util.py` will automatically create low-resolution and other variants during training. * Update the default `image_folder` path in `train_diffusion.py` or provide it as a command-line argument.  ### 2. Training the Diffusion Model  The `train_diffusion.py` script is used to train the model. Here are some of the key command-line arguments:  * `--image_folder`: Path to your training image dataset.     * Default: `/media/tuannl1/heavy_weight/data/cv_data/images256x256` * `--img_size`: Target size for the high-resolution images (e.g., 256 for 256x256).     * Default: `256` * `--downscale_factor`: Factor by which to downscale the original image to create the low-resolution input.     * Default: `4` * `--epochs`: Number of training epochs.     * Default: `40` * `--batch_size`: Batch size per device.     * Default: `32` * `--accumulation_steps`: Gradient accumulation steps. Effective batch size will be `batch_size * accumulation_steps`.     * Default: `64` * `--learning_rate`: Learning rate for the optimizer.     * Default: `2e-5` * `--timesteps`: Number of diffusion timesteps.     * Default: `1000` * `--diffusion_mode`: Prediction mode for the diffusion model. Options: `"v_prediction"` or `"noise"`.     * Default: `"v_prediction"` * `--unet_base_dim`: Base channel dimension for the U-Net.     * Default: `32` * `--unet_dim_mults`: Channel multipliers for each U-Net resolution level (e.g., `1 2 4`).     * Default: `1 2 4` * `--log_dir`: Base directory for TensorBoard logs.     * Default: `/media/hoangdv/cv_logs` * `--checkpoint_dir`: Base directory for saving model checkpoints.     * Default: `/media/hoangdv/cv_checkpoints` * `--weights_path`: Path to a pre-trained model checkpoint to resume training.     * Default: `None`  **Example training command:**  ```bash python train_diffusion.py \     --image_folder /path/to/your/images \     --img_size 256 \     --downscale_factor 4 \     --batch_size 8 \     --accumulation_steps 8 \     --learning_rate 1e-5 \     --epochs 100 \     --diffusion_mode v_prediction \     --log_dir ./logs \     --checkpoint_dir ./checkpoints 3. Monitoring TrainingTraining progress, including loss and sample generated images, can be monitored using TensorBoard:tensorboard --logdir ./logs # Or your specified log_dir
-Navigate to http://localhost:6006 in your web browser.4. Inference / Image GenerationWhile there isn't a dedicated inference script in the provided files, the ResidualGenerator class in diffusion.py is designed for this purpose. You would typically:Initialize the UNet model.Load the trained weights into the U-Net model using DiffusionModel.load_model_weights() or by loading a checkpoint.Initialize the ResidualGenerator with the appropriate predict_mode (matching how the U-Net was trained).Prepare your low-resolution input image (ensure it's a PyTorch tensor, normalized to [-1, 1], and on the correct device).Call the generate_images method of the ResidualGenerator, passing the U-Net model and the low-resolution image.Conceptual example (you would need to adapt this into a script):# --- Conceptual Inference ---
-# from unet import UNet
-# from diffusion import DiffusionModel, ResidualGenerator
-# import torch
-# from util import ImageDataset # For image loading/preprocessing if needed
-# from PIL import Image
-# import torchvision.transforms.functional as TF
+# Computer Vision Super-Resolution Project (DDPM)
 
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# trained_model_path = "./checkpoints/your_mode_timestamp/diffusion_model_your_mode_best.pth" # Path to your best model
-# predict_mode = "v_prediction" # Or "noise", depending on your trained model
+This project implements a Denoising Diffusion Probabilistic Model (DDPM) for image super-resolution. The goal is to upscale low-resolution images to higher resolutions while generating realistic details. The model utilizes a U-Net architecture with attention mechanisms and is trained to predict either the noise added during the forward diffusion process or a "v-prediction" target.
 
-# # 1. Initialize U-Net
-# unet_model = UNet(
-#     in_channels=3,
-#     out_channels=3,
-#     base_dim=32, # Match training
-#     dim_mults=(1, 2, 4), # Match training
-#     context_dim=512 # Match training
-# ).to(device)
+## Core Components
 
-# # 2. Load trained weights
-# # Create a dummy diffusion_helper to use its load_model_weights method
-# # Ensure the mode of diffusion_helper matches the mode the model was trained with if loading a full checkpoint.
-# # If loading just weights, the mode of the generator is what matters for inference.
-# diffusion_helper_for_loading = DiffusionModel(device=device, mode=predict_mode)
-# diffusion_helper_for_loading.load_model_weights(unet_model, trained_model_path, verbose=True)
-# unet_model.eval()
+The project is structured into several key Python files:
 
-# # 3. Initialize ResidualGenerator
-# generator = ResidualGenerator(
-#     img_channels=3,
-#     img_size=256, # Target HR image size
-#     device=device,
-#     num_train_timesteps=1000, # Match training
-#     predict_mode=predict_mode
-# )
+*   **`diffusion.py`**:
+    *   `DiffusionModel`: Implements the core DDPM logic, including the forward (noising) and reverse (denoising) processes. It handles the cosine noise schedule, training loop (with gradient accumulation, TensorBoard logging, checkpointing), and model saving/loading. Supports "v-prediction" and "noise" prediction modes.
+    *   `ResidualGenerator`: A class for generating high-resolution images from low-resolution inputs using a trained diffusion model and a scheduler (e.g., `DDIMScheduler` from the `diffusers` library). It can operate in "v-prediction" or "noise" mode based on the trained model.
 
-# # 4. Prepare low-resolution input
-# # Example: Load an image, downscale it, and normalize
-# lr_image_path = "path/to/your/low_res_input.png"
-# img_pil = Image.open(lr_image_path).convert("RGB")
-# # Assuming target HR is 256x256, and downscale_factor was 4, LR input should be 64x64
-# lr_h, lr_w = 256 // 4, 256 // 4
-# img_pil_resized_lr = img_pil.resize((lr_w, lr_h), Image.BICUBIC)
+*   **`unet.py`**:
+    *   `UNet`: Defines the U-Net architecture, which serves as the noise predictor in the diffusion model. It incorporates residual blocks, sinusoidal position embeddings for time steps, and attention mechanisms (`BasicTransformerBlock`) for improved feature extraction and context integration.
+    *   `BasicTransformerBlock`: A transformer block that combines self-attention and conditional cross-attention (if context is provided) with feed-forward layers.
+    *   `ImageContextExtractor`: Extracts contextual features from an image, which can be used for conditioning the U-Net (e.g., using the low-resolution image as context).
 
-# low_res_tensor_0_1 = TF.to_tensor(img_pil_resized_lr) # (C, H_lr, W_lr), [0,1]
-# low_res_tensor_neg1_1 = (low_res_tensor_0_1 * 2.0 - 1.0).unsqueeze(0).to(device) # (1, C, H_lr, W_lr), [-1,1]
+*   **`train_diffusion.py`**:
+    *   The main script for training the diffusion model. It handles dataset loading, model initialization, optimizer setup (using `bitsandbytes` for 8-bit AdamW), and orchestrates the training process using the `DiffusionModel` class. It includes argument parsing for configuring training parameters.
 
-# # 5. Generate image
-# # The UNet in this project uses the low-resolution image as 'context'
-# # The initial 'image_latents' for the diffusion process are random noise.
-# with torch.no_grad():
-#     # The 'low_resolution_image' argument to generate_images is the context
-#     generated_hr_tensor_0_1 = generator.generate_images(
-#         model=unet_model,
-#         low_resolution_image=low_res_tensor_neg1_1, # This is the context for the U-Net
-#         num_images=1,
-#         num_inference_steps=50 # Adjust as needed
-#     ) # Output is [0,1]
+*   **`util.py`**:
+    *   `ImageDataset`: A PyTorch `Dataset` class for loading and preprocessing images. It generates low-resolution images, corresponding upscaled versions (using a provided upscale function like bicubic), the original high-resolution target, and the residual between the original and the upscaled image. It also supports data augmentation (horizontal flipping).
+    *   `SinusoidalPositionEmbeddings`: Generates sinusoidal embeddings for time steps, used to inform the U-Net about the current noise level.
+    *   `ResidualBlock`: A standard residual block with GroupNorm, SiLU activation, and optional time embedding conditioning, used within the U-Net.
+    *   `MultiHeadAttentionBlock`: A self-attention block (though `BasicTransformerBlock` in `unet.py` seems to be the primary one used for more advanced attention).
 
-# # Post-process: convert to PIL image, save, etc.
-# generated_image_pil = TF.to_pil_image(generated_hr_tensor_0_1.squeeze(0).cpu())
-# generated_image_pil.save("generated_super_resolution_image.png")
-# print("Generated image saved!")
-Model Architecture DetailsU-Net: The core predictive model is a U-Net, which is well-suited for image-to-image tasks.It consists of an encoder path that progressively downsamples the input, a bottleneck, and a decoder path that progressively upsamples to the original resolution.Skip connections link corresponding encoder and decoder stages, allowing the decoder to reuse low-level features from the encoder.Residual Blocks: Used throughout the U-Net to facilitate deeper architectures and improve gradient flow.Time Embeddings: Sinusoidal position embeddings are used to encode the current diffusion timestep t. These embeddings are processed by an MLP and then used to condition the Residual Blocks, allowing the model to adapt its behavior based on the noise level.Attention (BasicTransformerBlock):Self-Attention: Applied at various stages (typically deeper layers and bottleneck) to allow the model to capture long-range dependencies within the image features.Cross-Attention: If contextual information (e.g., features from the low-resolution input image via ImageContextExtractor) is provided, cross-attention layers allow the U-Net to integrate this context effectively into its feature maps.Context Extractor (ImageContextExtractor): A small convolutional network that processes the (e.g., low-resolution) input image to produce embedding sequences suitable for cross-attention conditioning in the U-Net.Future Work / Potential ImprovementsImplement a dedicated inference script with more options (e.g., batch processing, different schedulers).Experiment with different U-Net configurations (depth, width, attention placement).Explore other conditioning mechanisms (e.g., text-to-image features for guided super-resolution).Investigate alternative noise schedules or diffusion processes.Add support for different upscaling factors more dynamically.Implement quantitative evaluation metrics (PSNR, SSIM, LPIPS).Optimize for faster sampling.This README provides a comprehensive overview of your project. Remember to replace placeholders like <your-repository-url> and
+*   **`bicubic.py`**:
+    *   `upscale_image`: A utility function to upscale images using bicubic interpolation. It can handle various input types (file paths, NumPy arrays, PyTorch tensors) and supports different scale factors. This is likely used by `ImageDataset` to create the upscaled version of the low-resolution image for training or as a baseline.
+
+## Features
+
+*   **Denoising Diffusion Probabilistic Model (DDPM)** for image super-resolution.
+*   Supports two prediction modes for the diffusion model:
+    *   **Noise prediction**: The model learns to predict the noise added to the image.
+    *   **V-prediction**: The model learns to predict a target 'v' related to both the noise and the clean image.
+*   **U-Net Architecture**: A robust U-Net with:
+    *   Residual Blocks for stable training.
+    *   Sinusoidal Time Embeddings to condition on noise levels.
+    *   Self-Attention and Cross-Attention (`BasicTransformerBlock`) for capturing global dependencies and integrating contextual information (e.g., from the low-resolution image).
+*   **Cosine Noise Schedule**: For defining the variance of noise added at each diffusion timestep.
+*   **Conditional Generation**: The U-Net can be conditioned on context (e.g., low-resolution image features extracted by `ImageContextExtractor`).
+*   **Training Script (`train_diffusion.py`)**:
+    *   Configurable training parameters via command-line arguments.
+    *   Gradient accumulation to simulate larger batch sizes.
+    *   Integration with `bitsandbytes` for memory-efficient 8-bit optimizers (AdamW8bit).
+    *   TensorBoard logging for monitoring training progress (loss, generated image samples).
+    *   Checkpointing to save the best model and resume training.
+*   **Flexible Image Dataset (`ImageDataset`)**:
+    *   Loads images and prepares low-resolution inputs, bicubic upscaled versions, and high-resolution targets.
+    *   Calculates the residual image (difference between HR original and bicubic upscaled LR).
+    *   Supports data augmentation (horizontal flipping).
+    *   Normalizes images to the `[-1, 1]` range.
+*   **Bicubic Upscaling Utility (`bicubic.py`)**: A standalone module for performing bicubic interpolation, useful for data preparation or as a baseline comparison.
+*   **Inference/Sampling (`ResidualGenerator`)**:
+    *   Uses `diffusers.DDIMScheduler` for efficient sampling.
+    *   Can generate images based on a trained model operating in either "v-prediction" or "noise" mode.
+
+## Setup and Installation
+
+1.  **Clone the repository (if applicable):**
+    ```bash
+    git clone <your-repository-url>
+    cd <your-project-directory>
+    ```
+
+2.  **Create a Python virtual environment (recommended):**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+3.  **Install dependencies:**
+    You will need Python 3.x and the following core libraries. You can install them using pip:
+    ```bash
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 # Or your specific CUDA version
+    pip install numpy opencv-python Pillow tqdm bitsandbytes diffusers tensorboard torchinfo
+    ```
+    It's good practice to create a `requirements.txt` file:
+    ```
+    torch
+    torchvision
+    torchaudio
+    numpy
+    opencv-python
+    Pillow
+    tqdm
+    bitsandbytes
+    diffusers
+    tensorboard
+    torchinfo
+    ```
+    Then install with: `pip install -r requirements.txt`
+
+## Usage
+
+### 1. Prepare your Dataset
+
+*   Place your high-resolution training images in a single folder.
+*   The `ImageDataset` in [util.py](http://_vscodecontentref_/1) will automatically create low-resolution and other variants during training.
+*   Update the default `image_folder` path in [train_diffusion.py](http://_vscodecontentref_/2) or provide it as a command-line argument.
+
+### 2. Training the Diffusion Model
+
+The [train_diffusion.py](http://_vscodecontentref_/3) script is used to train the model. Here are some of the key command-line arguments:
+
+*   `--image_folder`: Path to your training image dataset.
+    *   Default: `/media/tuannl1/heavy_weight/data/cv_data/images256x256`
+*   `--img_size`: Target size for the high-resolution images (e.g., 256 for 256x256).
+    *   Default: `256`
+*   `--downscale_factor`: Factor by which to downscale the original image to create the low-resolution input.
+    *   Default: `4`
+*   `--epochs`: Number of training epochs.
+    *   Default: `40`
+*   `--batch_size`: Batch size per device.
+    *   Default: `32`
+*   `--accumulation_steps`: Gradient accumulation steps. Effective batch size will be `batch_size * accumulation_steps`.
+    *   Default: `64`
+*   `--learning_rate`: Learning rate for the optimizer.
+    *   Default: `2e-5`
+*   `--timesteps`: Number of diffusion timesteps.
+    *   Default: `1000`
+*   `--diffusion_mode`: Prediction mode for the diffusion model. Options: `"v_prediction"` or `"noise"`.
+    *   Default: `"v_prediction"`
+*   `--unet_base_dim`: Base channel dimension for the U-Net.
+    *   Default: `32`
+*   `--unet_dim_mults`: Channel multipliers for each U-Net resolution level (e.g., `1 2 4`).
+    *   Default: `1 2 4`
+*   `--log_dir`: Base directory for TensorBoard logs.
+    *   Default: `/media/hoangdv/cv_logs`
+*   `--checkpoint_dir`: Base directory for saving model checkpoints.
+    *   Default: `/media/hoangdv/cv_checkpoints`
+*   `--weights_path`: Path to a pre-trained model checkpoint to resume training.
+    *   Default: `None`
+
+**Example training command:**
+
+```bash
+python train_diffusion.py \
+    --image_folder /path/to/your/images \
+    --img_size 256 \
+    --downscale_factor 4 \
+    --batch_size 8 \
+    --accumulation_steps 8 \
+    --learning_rate 1e-5 \
+    --epochs 100 \
+    --diffusion_mode v_prediction \
+    --log_dir ./logs \
+    --checkpoint_dir ./checkpoints
