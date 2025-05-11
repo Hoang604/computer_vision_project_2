@@ -105,8 +105,10 @@ The [train_diffusion.py](http://_vscodecontentref_/3) script is used to train th
 *   `--diffusion_mode`: Prediction mode for the diffusion model. Options: `"v_prediction"` or `"noise"`.
 *   `--unet_base_dim`: Base channel dimension for the U-Net.
 *   `--unet_dim_mults`: Channel multipliers for each U-Net resolution level (e.g., `1 2 4`).
-*   `--log_dir`: Base directory for TensorBoard logs.
-*   `--checkpoint_dir`: Base directory for saving model checkpoints.
+*   `--base_log_dir`: Base directory for logging
+*   `--base_checkpoint_dir`: Base directory for saving checkpoint
+*   `--continue_log_dir`: Directory for continue logging on old TensorBoard logs.
+*   `--continue_checkpoint_dir`: Directory for continue training on old checkpoints.
 *   `--weights_path`: Path to a pre-trained model checkpoint to resume training.
 
 **Example training command:**

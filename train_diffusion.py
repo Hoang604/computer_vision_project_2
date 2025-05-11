@@ -74,10 +74,10 @@ def train_diffusion(args):
             epochs=args.epochs,
             start_epoch=start_epoch,
             best_loss=best_loss,
-            log_dir=args.log_dir if args.log_dir else None,
-            checkpoint_dir=args.checkpoint_dir if args.checkpoint_dir else None,
-            log_dir_base=args.log_dir,
-            checkpoint_dir_base=args.checkpoint_dir
+            log_dir=args.continue_log_dir if args.continue_log_dir else None,
+            checkpoint_dir=args.continue_checkpoint_dir if args.continue_checkpoint_dir else None,
+            log_dir_base=args.base_log_dir,
+            checkpoint_dir_base=args.base_checkpoint_dir
         )
     except Exception as train_error:
         # Catch potential errors during training
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=40, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size') 
     parser.add_argument('--accumulation_steps', type=int, default=64, help='Gradient accumulation steps')
-    parser.add_argument('--learning_rate', type=float, default=2e-5, help='Optimizer learning rate')
+    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Optimizer learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.01, help='Optimizer weight decay')
     parser.add_argument('--num_workers', type=int, default=4, help='DataLoader worker processes')
     # Diffusion args
@@ -108,8 +108,10 @@ if __name__ == "__main__":
     parser.add_argument('--unet_base_dim', type=int, default=32, help='Base channel dimension for UNet')
     parser.add_argument('--unet_dim_mults', type=int, nargs='+', default=[1, 2, 4], help='Channel multipliers for UNet')
     # Logging/Saving args
-    parser.add_argument('--log_dir', type=str, default='/media/hoangdv/cv_logs', help='Base directory for TensorBoard logs')
-    parser.add_argument('--checkpoint_dir', type=str, default='/media/hoangdv/cv_checkpoints', help='Base directory for checkpoints')
+    parser.add_argument('--base_log_dir', type=str, default='/media/hoangdv/cv_logs', help='Base directory for logging')
+    parser.add_argument('--base_checkpoint_dir', type=str, default='/media/hoangdv/cv_checkpoints', help='Base directory for saving checkpoints')
+    parser.add_argument('--continue_log_dir', type=str, default='/media/hoangdv/cv_logs', help='Directory for continue logging on old TensorBoard logs')
+    parser.add_argument('--continue_checkpoint_dir', type=str, default='/media/hoangdv/cv_checkpoints/diffusion_model_v_prediction_best.pth', help='Directory for continue training on old checkpoints')
     # Loading model args
     parser.add_argument('--verbose', action='store_true', help='Print detailed information about weight loading')
 
