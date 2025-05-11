@@ -32,7 +32,7 @@ PIL.ImageFile.LOAD_TRUNCATED_IMAGES = True # avoid "Decompressed Data Too Large"
 
 #----------------------------------------------------------------------------
 # Define the base directory for all downloads and outputs
-BASE_DOWNLOAD_DIR = '/media/tuannl1/heavy_weight/data/cv_data'
+BASE_DOWNLOAD_DIR = 'data'
 #----------------------------------------------------------------------------
 
 json_spec_orig = dict(file_url='https://drive.google.com/uc?id=16N0RV4fHI6joBuKbQAoG34V_cQk7vxSA', file_path='ffhq-dataset-v2.json', file_size=267793842, file_md5='425ae20f06a4da1d4dc0f46d40ba5fd6')
@@ -595,7 +595,7 @@ def run(tasks, **download_kwargs):
     # file_paths in json_data (item['image'], etc.) are now also absolute
 
     if 'images' in tasks:
-        start_image_index = 27989
+        start_image_index = 0
         all_image_specs = [item['image'] for item in list(json_data.values()) if 'image' in item and item['image']]
         
         if start_image_index < len(all_image_specs):

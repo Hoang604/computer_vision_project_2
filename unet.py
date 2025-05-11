@@ -212,7 +212,7 @@ class UNet(nn.Module):
         dim_mults=(1, 2, 4),        # Channel multipliers for each resolution level
         num_resnet_blocks=2,        # Number of ResNet blocks per level
         context_dim=512,            # Dimension of CLIP context embeddings
-        attn_heads=8,               # Number of attention heads
+        attn_heads=4,               # Number of attention heads
         dropout=0.1
     ):
         super().__init__()
@@ -277,26 +277,22 @@ class UNet(nn.Module):
             stage_modules.append(make_resnet_block(dim_in, dim_out, actual_time_emb_dim))
             for _ in range(num_resnet_blocks - 1):
                 stage_modules.append(make_resnet_block(dim_out, dim_out, actual_time_emb_dim))
-            if dim_out > base_dim: # Double attention heads
-                stage_modules.append(make_attn_block(dim_out, attn_heads * 2, context_dim))
-            else:
+            if is_last:
                 stage_modules.append(make_attn_block(dim_out, attn_heads, context_dim))
 
             # Add Downsample layer if not the last stage
             if not is_last:
                 stage_modules.append(make_downsample())
             else: # Add Identity if last stage (optional, for consistent structure)
-                 stage_modules.append(nn.Identity())
+                stage_modules.append(nn.Identity())
 
             self.downs.append(stage_modules)
 
         # -- Bottleneck --
         mid_dim = dims[-1]
         self.bottleneck = nn.ModuleList([])
-        # self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
         self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
-        self.bottleneck.append(make_attn_block(mid_dim, attn_heads * 2, context_dim))
-        self.bottleneck.append(make_attn_block(mid_dim, attn_heads * 2, context_dim))
+        self.bottleneck.append(make_attn_block(mid_dim, attn_heads, context_dim))
         self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
         # self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
 
@@ -312,14 +308,7 @@ class UNet(nn.Module):
             stage_modules.append(make_resnet_block(dim_in + skip_channels, dim_in, actual_time_emb_dim))
             for _ in range(num_resnet_blocks - 1):
                 stage_modules.append(make_resnet_block(dim_in, dim_in, actual_time_emb_dim))
-                if dim_in > base_dim:
-                    stage_modules.append(make_attn_block(dim_in, attn_heads * 2, context_dim))
-                else:
-                    stage_modules.append(make_attn_block(dim_in, attn_heads, context_dim))
-            
-            if dim_in > base_dim:
-                stage_modules.append(make_attn_block(dim_in, attn_heads * 2, context_dim))
-            else:
+            if i == 0: # Last stage
                 stage_modules.append(make_attn_block(dim_in, attn_heads, context_dim))
 
             # Add Upsample layer if not the last stage (output stage)

@@ -18,9 +18,9 @@ def train_diffusion(args):
     print(f"Using device: {device}")
 
     # Create the dataset with the specified folder
-    folder_path = args.image_folder if args.image_folder else '/media/tuannl1/heavy_weight/data/cv_data/images1024x1024'
+    folder_path = args.image_folder if args.image_folder else '/media/tuannl1/heavy_weight/data/cv_data/images256x256'
     train_dataset = ImageDataset(folder_path=folder_path, img_size=args.img_size, downscale_factor=args.downscale_factor)
-    print(f"Loaded {len(train_dataset)} images from /media/tuannl1/heavy_weight/data/cv_data/images1024x1024")
+    print(f"Loaded {len(train_dataset)} images from /media/tuannl1/heavy_weight/data/cv_data/images256x256")
 
     # Create the DataLoader
     train_loader = DataLoader(
@@ -42,7 +42,7 @@ def train_diffusion(args):
         out_channels=args.img_channels,
         base_dim=args.unet_base_dim,
         dim_mults=tuple(args.unet_dim_mults),
-        num_resnet_blocks=3
+        num_resnet_blocks=1
     ).to(device)
     print(f"Front UNet model initialized with base_dim={args.unet_base_dim}, dim_mults={tuple(args.unet_dim_mults)}")
     print("Initializing model with random weights")
@@ -90,12 +90,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Diffusion Model (Simplified Dataset, Hardcoded Path)")
     # Dataset args
     parser.add_argument('--img_size', type=int, default=256, help='Target image size')
-    parser.add_argument('--img_channels', type=int, default=4, help='Number of image channels')
-    parser.add_argument('--image_folder', type=str, default=None, help='Path to the image folder (hardcoded in the script)')
+    parser.add_argument('--img_channels', type=int, default=3, help='Number of image channels')
+    parser.add_argument('--image_folder', type=str, default="/media/tuannl1/heavy_weight/data/cv_data/images256x256", help='Path to the image folder (hardcoded in the script)')
     parser.add_argument('--downscale_factor', type=int, default=4, help='Downscale factor for original image size')
     # Training args
-    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
+    parser.add_argument('--epochs', type=int, default=40, help='Number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size') 
     parser.add_argument('--accumulation_steps', type=int, default=64, help='Gradient accumulation steps')
     parser.add_argument('--learning_rate', type=float, default=2e-5, help='Optimizer learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.01, help='Optimizer weight decay')
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     parser.add_argument('--weights_path', type=str, default=None, help='Path to pre-trained model weights')
     parser.add_argument('--diffusion_mode', type=str, default='v_prediction', help='Diffusion mode (v_prediction or noise)')
     # UNet args
-    parser.add_argument('--unet_base_dim', type=int, default=256, help='Base channel dimension for UNet')
+    parser.add_argument('--unet_base_dim', type=int, default=32, help='Base channel dimension for UNet')
     parser.add_argument('--unet_dim_mults', type=int, nargs='+', default=[1, 2, 4], help='Channel multipliers for UNet')
     # Logging/Saving args
     parser.add_argument('--log_dir', type=str, default='/media/hoangdv/cv_logs', help='Base directory for TensorBoard logs')

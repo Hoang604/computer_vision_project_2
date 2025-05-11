@@ -329,87 +329,20 @@ def upscale_image(
 
 # --- Example Usage (similar to previous, but using upscale_image_v2) ---
 if __name__ == "__main__":
-    print("Pro Coder Image Upscaler V2 - Example Usage")
-    print(f"Allowed scale factors: {ALLOWED_SCALE_FACTORS}")
-    print("=" * 40, end="")
-
-    # --- Create dummy images for testing ---
-    # uint8 [0,255]
-    dummy_uint8_hwc = np.array([
-        [[10,20,30], [40,50,60]],
-        [[70,80,90], [100,110,120]]
-    ], dtype=np.uint8) # (2,2,3)
-
-    # float32 [0,1]
-    dummy_float01_hwc = dummy_uint8_hwc.astype(np.float32) / 255.0
-
-    # float32 [0,255]
-    dummy_float255_hwc = dummy_uint8_hwc.astype(np.float32)
-
-    # Grayscale uint8 [0,255]
-    dummy_gray_uint8_hw = np.array([
-        [10,50], [100,150]
-    ], dtype=np.uint8) # (2,2)
-
-
-    # Test function
-    def run_test(name, img_src, scale, save=False, expected_return_dtype=None, expected_return_range_0_1=None):
-        print(f"\n--- Test: {name} ---")
-        try:
-            result = upscale_image(img_src, scale, save_image=save, output_directory="bicubic_output_v2_test")
-            print(f"  Result shape: {result.shape if isinstance(result, np.ndarray) else 'N/A'}")
-            if result is not None:
-                print(f"  Input type: {type(img_src)}")
-                print(f"  Output type: {type(result)}")
-                if isinstance(result, np.ndarray):
-                    print(f"  Output dtype: {result.dtype}, shape: {result.shape}")
-                    print(f"  Output range: [{result.min():.2f}, {result.max():.2f}]")
-                    if expected_return_dtype:
-                        assert result.dtype == expected_return_dtype, f"Dtype mismatch! Expected {expected_return_dtype}, got {result.dtype}"
-                    if expected_return_range_0_1 is True:
-                        assert result.min() >= -EPSILON and result.max() <= 1.0 + EPSILON, "Range not 0-1"
-                    elif expected_return_range_0_1 is False:
-                         assert result.max() > 1.0 + EPSILON or result.min() < -EPSILON or result.max() > 20, "Range looks like 0-1 but expected 0-255" # Heuristic
-                elif TORCH_AVAILABLE and isinstance(result, torch.Tensor):
-                    print(f"  Output dtype: {result.dtype}, shape: {result.shape}, device: {result.device}")
-                    print(f"  Output range: [{result.min().item():.2f}, {result.max().item():.2f}]")
-                    # Add similar asserts for torch tensors if needed
-                print(f"  Test '{name}' PASSED.")
-            else:
-                print(f"  Test '{name}' FAILED (result is None).")
-        except Exception as e:
-            print(f"  Test '{name}' FAILED with error: {e}")
-
-
-    # --- Run Tests ---
-    run_test("uint8 HWC input, return uint8 HWC", dummy_uint8_hwc, 2, save=True, expected_return_dtype=np.uint8, expected_return_range_0_1=False)
-    run_test("float32 [0,1] HWC input, return float32 [0,1] HWC", dummy_float01_hwc, 2, save=True, expected_return_dtype=np.float32, expected_return_range_0_1=True)
-    run_test("float32 [0,255] HWC input, return float32 [0,255] HWC", dummy_float255_hwc, 2, save=True, expected_return_dtype=np.float32, expected_return_range_0_1=False)
-    run_test("grayscale uint8 HW input, return uint8 HW", dummy_gray_uint8_hw, 3, save=True, expected_return_dtype=np.uint8, expected_return_range_0_1=False)
-
-    if TORCH_AVAILABLE:
-        # Torch tensor uint8 HWC
-        tensor_uint8_hwc = torch.from_numpy(dummy_uint8_hwc)
-        run_test("torch.Tensor uint8 HWC, return torch.Tensor uint8 HWC", tensor_uint8_hwc, 2, save=True)
+    img_path = "data/test.png"
+    scale_factor = 2
+    save_output = True
+    output_dir = "output"
+    output_prefix = "upscaled"
+    result = upscale_image(
+        img_path,
+        scale_factor,
+        save_image=save_output,
+        output_directory=output_dir,
+        output_filename_prefix=output_prefix
+    )
+    if result is not None:
+        print("Upscaling completed successfully.")
+    else:
+        print("Upscaling failed.")
         
-        # Torch tensor float32 [0,1] HWC
-        tensor_float01_hwc = torch.from_numpy(dummy_float01_hwc)
-        run_test("torch.Tensor float32 [0,1] HWC, return torch.Tensor float32 [0,1] HWC", tensor_float01_hwc, 2, save=True)
-
-        # Torch tensor float32 [0,1] CHW (example)
-        dummy_float01_chw_np = dummy_float01_hwc.transpose(2,0,1) # (3,2,2)
-        tensor_float01_chw = torch.from_numpy(dummy_float01_chw_np)
-        # Note: current upscale_image_v2 converts CHW tensor to HWC internally and returns HWC tensor
-        run_test("torch.Tensor float32 [0,1] CHW, return torch.Tensor float32 [0,1] HWC", tensor_float01_chw, 2, save=True)
-
-    # Test with a dummy file
-    dummy_file_path = "dummy_lr_test_image_v2.png"
-    try:
-        Image.fromarray(dummy_uint8_hwc, mode='RGB').save(dummy_file_path)
-        run_test(f"File input ({dummy_file_path}), return uint8 HWC", dummy_file_path, 2, save=True, expected_return_dtype=np.uint8, expected_return_range_0_1=False)
-        if os.path.exists(dummy_file_path): os.remove(dummy_file_path)
-    except Exception as e:
-        print(f"Could not run file test: {e}")
-
-    print("=" * 40)
-    print("Example usage V2 finished. Check 'bicubic_output_v2_test' directory.")

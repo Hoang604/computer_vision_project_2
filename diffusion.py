@@ -169,8 +169,8 @@ class DiffusionModel:
               start_epoch=0, best_loss=float('inf'), 
               log_dir=None, 
               checkpoint_dir=None, 
-              log_dir_base='/home/hoang/python/pytorch_diffusion', 
-              checkpoint_dir_base='/home/hoang/python/pytorch_diffusion') -> None:
+              log_dir_base="/media/hoangdv/cv_logs", 
+              checkpoint_dir_base="/media/hoangdv/cv_checkpoints") -> None:
         """
         Trains the diffusion model using gradient accumulation.
 
@@ -212,9 +212,9 @@ class DiffusionModel:
 
         # ===  Set up directories for logging and checkpoints  ===
         if log_dir is None:
-            log_dir = os.path.join(log_dir_base, 'logs', f"{self.mode}_{timestamp}") # Add mode to log dir
+            log_dir = os.path.join(log_dir_base, f"{self.mode}_{timestamp}") # Add mode to log dir
         if checkpoint_dir is None:
-            checkpoint_dir = os.path.join(checkpoint_dir_base, 'temp_checkpoints', f"{self.mode}_{timestamp}") # Add mode to checkpoint dir
+            checkpoint_dir = os.path.join(checkpoint_dir_base, f"{self.mode}_{timestamp}") # Add mode to checkpoint dir
 
 
         best_checkpoint_path = os.path.join(checkpoint_dir, f'diffusion_model_{self.mode}_best.pth')
@@ -249,8 +249,8 @@ class DiffusionModel:
             epoch_losses = []
 
             for (low_res_image_batch, 
-                 upscaled_image_tensor_batch, 
-                 original_image_resized_batch, 
+                 _, 
+                 _, 
                  residual_image_0_1_batch) in dataset:
                 
                 low_res_image_batch = low_res_image_batch.to(self.device)
@@ -314,6 +314,53 @@ class DiffusionModel:
                     'mode': self.mode # Save mode in checkpoint
                 }, best_checkpoint_path)
                 print(f"Saved new best model checkpoint to {best_checkpoint_path} (Epoch {epoch+1}, Mode: {self.mode}, OptSteps: {global_step_optimizer})")
+
+            # generate sample images for TensorBoard
+            if (epoch + 1) % 5 == 0:
+                print(f"Generating sample images for TensorBoard at epoch {epoch+1}...")
+                generator = ResidualGenerator(
+                    img_channels=3,
+                    img_size=256,
+                    device=self.device,
+                    num_train_timesteps=self.timesteps,
+                    predict_mode=self.mode
+                )
+                sample_images = []
+                for i in range(3):
+                    # load some low resolution images from the dataset
+                    low_res_image_batch, up_scale_image_batch, original_image_batch, _ = next(iter(dataset))
+                    low_res_image_batch = low_res_image_batch.to(self.device)
+                    up_scale_image_batch = up_scale_image_batch.to(self.device)
+
+                    low_res_image = low_res_image_batch[0].unsqueeze(0) # add batch dimension
+                    up_scale_image = up_scale_image_batch[0].unsqueeze(0) # add batch dimension
+
+                    # (1, c, h, w)
+                    residual = generator.generate_images(model=model, low_resolution_image=low_res_image, num_images=1)
+                    image = up_scale_image + residual
+                    image = torch.clamp(image, -1.0, 1.0)
+                    image = (image + 1.0) / 2.0 # Normalize to [0, 1]
+                    # (1, c, h, w) -> (c, h, w)
+                    image = image.cpu().numpy().squeeze(0) # Remove batch dimension and move to CPU
+                    # save the image to TensorBoard
+                    sample_image = (image * 255).astype(np.uint8) # Convert to uint8
+                    sample_image = np.clip(sample_image, 0, 255) # Ensure values are in [0, 255]
+                    original_image = original_image_batch[0].cpu().numpy()
+                    imgs = [low_res_image.squeeze(0).cpu().numpy(), sample_image, original_image]
+                    sample_images.append(imgs)
+
+                # Save generated images to TensorBoard
+                for i, imgs in enumerate(sample_images):
+                    low_res_image, up_scale_image, original_image = imgs
+                    low_res_image = (low_res_image + 1.0) / 2.0 # Normalize to [0, 1]
+                    low_res_image = low_res_image * 255.0
+                    original_image = (original_image + 1.0) / 2.0 # Normalize to [0, 1]
+                    original_image = original_image * 255.0
+                    low_res_image = low_res_image.astype(np.uint8)
+                    original_image = original_image.astype(np.uint8)
+                    writer.add_image(f'low_res_{i}', low_res_image, epoch + 1, dataformats='CHW')
+                    writer.add_image(f'up_scale_{i}', up_scale_image, epoch + 1, dataformats='CHW')
+                    writer.add_image(f'original_{i}', original_image, epoch + 1, dataformats='CHW')
 
             progress_bar.close()
 
@@ -623,7 +670,12 @@ class ResidualGenerator:
                                               used for the denoising steps, configured according
                                               to `predict_mode`.
     """
-    def __init__(self, img_channels=3, img_size=32, device='cuda', num_train_timesteps=1000, predict_mode='v_prediction'):
+    def __init__(self, 
+                 img_channels=3, 
+                 img_size=256, 
+                 device='cuda', 
+                 num_train_timesteps=1000, 
+                 predict_mode='v_prediction'):
         """
         Initializes the ResidualGenerator.
 
@@ -682,7 +734,7 @@ class ResidualGenerator:
               f"configured for model prediction_type='{self.predict_mode}'.")
 
     @torch.no_grad()
-    def generate_images(self, model, num_images=1, num_inference_steps=50):
+    def generate_images(self, model, low_resolution_image, num_images=1, num_inference_steps=50):
         """
         Generates images using the provided diffusion model and the configured scheduler.
 
@@ -737,7 +789,7 @@ class ResidualGenerator:
             t_for_model = t_step.unsqueeze(0).expand(num_images).to(self.device) # Expand to batch size
 
             # Model predicts based on its training (either 'v' or 'noise')
-            model_output = model(model_input, t_for_model)
+            model_output = model(model_input, t_for_model, context=low_resolution_image)
 
             # Use the scheduler's step function to compute the previous noisy sample
             # The scheduler will interpret `model_output` based on its `prediction_type`
@@ -753,5 +805,13 @@ class ResidualGenerator:
         generated_images = torch.clamp(generated_images, 0.0, 1.0) # Clip to ensure valid range
 
         print("Image generation complete.")
-        return generated_images.cpu() # Move to CPU for further processing if needed
+        return generated_images
 
+if __name__ == "__main__":
+    # Example usage ResidualGenerator
+    generator = ResidualGenerator()
+    unet = UNet(base_dim=32)
+    low_resolution_image = torch.randn(1, 3, 256, 256) # Example low-res image
+    low_resolution_image = low_resolution_image.to('cuda') # Move to GPU if available)
+    res = generator.generate_images(unet, low_resolution_image)
+    print(res.shape)
