@@ -211,7 +211,7 @@ class UNet(nn.Module):
         base_dim=128,               # Base channel dimension
         dim_mults=(1, 2, 4),        # Channel multipliers for each resolution level
         num_resnet_blocks=2,        # Number of ResNet blocks per level
-        context_dim=512,            # Dimension of CLIP context embeddings
+        context_dim=256,            # Dimension of CLIP context embeddings
         attn_heads=4,               # Number of attention heads
         dropout=0.1
     ):
@@ -294,7 +294,6 @@ class UNet(nn.Module):
         self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
         self.bottleneck.append(make_attn_block(mid_dim, attn_heads, context_dim))
         self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
-        # self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
 
         # -- Decoder -- 3 attention per block
         self.ups = nn.ModuleList([])

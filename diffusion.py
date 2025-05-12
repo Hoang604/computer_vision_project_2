@@ -167,6 +167,7 @@ class DiffusionModel:
               optimizer:bnb.optim.Adam8bit, 
               accumulation_steps=32, epochs=30, 
               start_epoch=0, best_loss=float('inf'), 
+              context="LR",
               log_dir=None, 
               checkpoint_dir=None, 
               log_dir_base="/media/hoangdv/cv_logs", 
@@ -203,9 +204,9 @@ class DiffusionModel:
                                             a timestamped directory is created under `checkpoint_dir_base`.
                                             Defaults to None.
             log_dir_base (str, optional): Base directory for TensorBoard logs.
-                                          Defaults to '/home/hoang/python/pytorch_diffusion'.
+                                          Defaults to '/media/hoangdv/cv_logs'.
             checkpoint_dir_base (str, optional): Base directory for model checkpoints.
-                                                 Defaults to '/home/hoang/python/pytorch_diffusion'.
+                                                 Defaults to '/media/hoangdv/cv_checkpoints'.
         """
         model.to(self.device) # Ensure model is on the correct device
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -249,11 +250,14 @@ class DiffusionModel:
             epoch_losses = []
 
             for (low_res_image_batch, 
-                 _, 
+                 up_scale_image_batch, 
                  _, 
                  residual_image_0_1_batch) in dataset:
                 
-                low_res_image_batch = low_res_image_batch.to(self.device)
+                if context == "LR":
+                    context = low_res_image_batch.to(self.device)
+                elif context == "HR":
+                    context = up_scale_image_batch.to(self.device)
                 residual_image_0_1_batch = residual_image_0_1_batch.to(self.device)
 
                 actual_batch_size = residual_image_0_1_batch.shape[0]
@@ -275,7 +279,7 @@ class DiffusionModel:
                     raise ValueError(f"Unsupported training mode: {self.mode}")
 
                 # Forward pass: model predicts based on its mode (either v or noise)
-                predicted_output = model(residual_image_0_1_batch_t, t, context=low_res_image_batch)
+                predicted_output = model(residual_image_0_1_batch_t, t, context=context)
 
                 # Calculate loss
                 loss = F.mse_loss(predicted_output, target)

@@ -13,10 +13,12 @@ def train_diffusion(args):
     Main function to set up and run the diffusion model training.
     Uses a hardcoded path for the dataset image folder and the simplified Dataset class.
     """
+
+    context = args.context
+    assert context in ['LR', 'HR'], "Context must be either 'LR' or 'HR'."
     # --- Setup ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-
     # Create the dataset with the specified folder
     folder_path = args.image_folder if args.image_folder else '/media/tuannl1/heavy_weight/data/cv_data/images256x256'
     train_dataset = ImageDataset(folder_path=folder_path, img_size=args.img_size, downscale_factor=args.downscale_factor)
@@ -42,7 +44,9 @@ def train_diffusion(args):
         out_channels=args.img_channels,
         base_dim=args.unet_base_dim,
         dim_mults=tuple(args.unet_dim_mults),
-        num_resnet_blocks=1
+        num_resnet_blocks=1,
+        context_dim=256,
+        attn_heads=8
     ).to(device)
     print(f"Front UNet model initialized with base_dim={args.unet_base_dim}, dim_mults={tuple(args.unet_dim_mults)}")
     print("Initializing model with random weights")
@@ -74,6 +78,7 @@ def train_diffusion(args):
             epochs=args.epochs,
             start_epoch=start_epoch,
             best_loss=best_loss,
+            context=context,
             log_dir=args.continue_log_dir if args.continue_log_dir else None,
             checkpoint_dir=args.continue_checkpoint_dir if args.continue_checkpoint_dir else None,
             log_dir_base=args.base_log_dir,
@@ -96,17 +101,18 @@ if __name__ == "__main__":
     # Training args
     parser.add_argument('--epochs', type=int, default=40, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size') 
-    parser.add_argument('--accumulation_steps', type=int, default=64, help='Gradient accumulation steps')
-    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Optimizer learning rate')
+    parser.add_argument('--accumulation_steps', type=int, default=8, help='Gradient accumulation steps')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Optimizer learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.01, help='Optimizer weight decay')
     parser.add_argument('--num_workers', type=int, default=4, help='DataLoader worker processes')
     # Diffusion args
+    parser.add_argument('--context', type=str, default='LR', help='Context type (LR or HR)')
     parser.add_argument('--timesteps', type=int, default=1000, help='Number of diffusion timesteps')
     parser.add_argument('--weights_path', type=str, default=None, help='Path to pre-trained model weights')
     parser.add_argument('--diffusion_mode', type=str, default='v_prediction', help='Diffusion mode (v_prediction or noise)')
     # UNet args
     parser.add_argument('--unet_base_dim', type=int, default=32, help='Base channel dimension for UNet')
-    parser.add_argument('--unet_dim_mults', type=int, nargs='+', default=[1, 2, 4], help='Channel multipliers for UNet')
+    parser.add_argument('--unet_dim_mults', type=int, nargs='+', default=[1, 2, 4, 8], help='Channel multipliers for UNet')
     # Logging/Saving args
     parser.add_argument('--base_log_dir', type=str, default='/media/hoangdv/cv_logs', help='Base directory for logging')
     parser.add_argument('--base_checkpoint_dir', type=str, default='/media/hoangdv/cv_checkpoints', help='Base directory for saving checkpoints')
@@ -124,6 +130,7 @@ if __name__ == "__main__":
     print(f"Image Size: {args.img_size}x{args.img_size}") 
     print(f"Image Channels: {args.img_channels}") 
     print(f"Diffusion Mode: {args.diffusion_mode}") 
+    print(f"Context type: {args.context}")
     print(f"Batch Size (per device): {args.batch_size}") 
     print(f"Accumulation Steps: {args.accumulation_steps}") 
     print(f"Effective Batch Size: {effective_batch_size}") 
