@@ -2,3 +2,7 @@ __pycache__
 data
 scp.py
 .env
+test.py
+*.png
+cv_checkpoints
+cv_logs

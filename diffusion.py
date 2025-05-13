@@ -157,7 +157,6 @@ class DiffusionModel:
 
         # Forward diffusion equation: x_t = sqrt(alpha_cumprod_t) * x_0 + sqrt(1 - alpha_cumprod_t) * noise
         x_t = sqrt_alphas_cumprod_t * x_0 + sqrt_one_minus_alphas_cumprod_t * noise
-        x_t = torch.clamp(x_t, -1.0, 1.0) # Ensure output is within valid range
 
         return x_t, noise
 
@@ -252,34 +251,33 @@ class DiffusionModel:
             for (low_res_image_batch, 
                  up_scale_image_batch, 
                  _, 
-                 residual_image_0_1_batch) in dataset:
+                 residual_image_batch) in dataset:
                 
                 if context == "LR":
                     context = low_res_image_batch.to(self.device)
                 elif context == "HR":
                     context = up_scale_image_batch.to(self.device)
-                residual_image_0_1_batch = residual_image_0_1_batch.to(self.device)
+                residual_image_batch = residual_image_batch.to(self.device)
 
-                actual_batch_size = residual_image_0_1_batch.shape[0]
+                actual_batch_size = residual_image_batch.shape[0]
                 t = torch.randint(0, self.timesteps, (actual_batch_size,), device=self.device, dtype=torch.long)
-                residual_image_0_1_batch_t, noise_added = self.q_sample(residual_image_0_1_batch, t)
+                residual_image_batch_t, noise_added = self.q_sample(residual_image_batch, t)
 
                 # Determine the target based on the model's prediction mode
                 if self.mode == "v_prediction":
                     # Calculate the target 'v' for v-prediction
                     # v = sqrt(alphas_cumprod_t) * noise - sqrt(1 - alphas_cumprod_t) * x_0
-                    sqrt_alphas_cumprod_t_extracted = self._extract(self.sqrt_alphas_cumprod, t, residual_image_0_1_batch_t.shape)
-                    sqrt_one_minus_alphas_cumprod_t_extracted = self._extract(self.sqrt_one_minus_alphas_cumprod, t, residual_image_0_1_batch_t.shape)
-                    target = sqrt_alphas_cumprod_t_extracted * noise_added - sqrt_one_minus_alphas_cumprod_t_extracted * residual_image_0_1_batch
+                    sqrt_alphas_cumprod_t_extracted = self._extract(self.sqrt_alphas_cumprod, t, residual_image_batch_t.shape)
+                    sqrt_one_minus_alphas_cumprod_t_extracted = self._extract(self.sqrt_one_minus_alphas_cumprod, t, residual_image_batch_t.shape)
+                    target = sqrt_alphas_cumprod_t_extracted * noise_added - sqrt_one_minus_alphas_cumprod_t_extracted * residual_image_batch
                 elif self.mode == "noise":
                     # Target is the noise itself
                     target = noise_added
                 else:
                     # This case should ideally not be reached due to __init__ validation
                     raise ValueError(f"Unsupported training mode: {self.mode}")
-
                 # Forward pass: model predicts based on its mode (either v or noise)
-                predicted_output = model(residual_image_0_1_batch_t, t, context=context)
+                predicted_output = model(residual_image_batch_t, t, context=context)
 
                 # Calculate loss
                 loss = F.mse_loss(predicted_output, target)
@@ -332,7 +330,7 @@ class DiffusionModel:
                 sample_images = []
                 for i in range(3):
                     # load some low resolution images from the dataset
-                    low_res_image_batch, up_scale_image_batch, original_image_batch, _ = next(iter(dataset))
+                    low_res_image_batch, up_scale_image_batch, original_image_batch, residual_image_batch = next(iter(dataset))
                     low_res_image_batch = low_res_image_batch.to(self.device)
                     up_scale_image_batch = up_scale_image_batch.to(self.device)
 
@@ -340,22 +338,26 @@ class DiffusionModel:
                     up_scale_image = up_scale_image_batch[0].unsqueeze(0) # add batch dimension
 
                     # (1, c, h, w)
-                    residual = generator.generate_images(model=model, low_resolution_image=low_res_image, num_images=1)
+                    residual = generator.generate_residuals(model=model, low_resolution_image=low_res_image, num_images=1)
                     image = up_scale_image + residual
                     image = torch.clamp(image, -1.0, 1.0)
                     image = (image + 1.0) / 2.0 # Normalize to [0, 1]
                     # (1, c, h, w) -> (c, h, w)
                     image = image.cpu().numpy().squeeze(0) # Remove batch dimension and move to CPU
+                    original_image_2 = up_scale_image + residual_image_batch[0].unsqueeze(0) # add batch dimension
+                    original_image_2 = torch.clamp(original_image_2, -1.0, 1.0)
+                    original_image_2 = (original_image_2 + 1.0) / 2.0 # Normalize to [0, 1]
+                    original_image_2 = original_image_2.cpu().numpy().squeeze(0) # Remove batch dimension and move to CPU
                     # save the image to TensorBoard
                     sample_image = (image * 255).astype(np.uint8) # Convert to uint8
                     sample_image = np.clip(sample_image, 0, 255) # Ensure values are in [0, 255]
                     original_image = original_image_batch[0].cpu().numpy()
-                    imgs = [low_res_image.squeeze(0).cpu().numpy(), sample_image, original_image]
+                    imgs = [low_res_image.squeeze(0).cpu().numpy(), sample_image, original_image, original_image_2]
                     sample_images.append(imgs)
 
                 # Save generated images to TensorBoard
                 for i, imgs in enumerate(sample_images):
-                    low_res_image, up_scale_image, original_image = imgs
+                    low_res_image, up_scale_image, original_image, original_image_2 = imgs
                     low_res_image = (low_res_image + 1.0) / 2.0 # Normalize to [0, 1]
                     low_res_image = low_res_image * 255.0
                     original_image = (original_image + 1.0) / 2.0 # Normalize to [0, 1]
@@ -365,6 +367,7 @@ class DiffusionModel:
                     writer.add_image(f'low_res_{i}', low_res_image, epoch + 1, dataformats='CHW')
                     writer.add_image(f'up_scale_{i}', up_scale_image, epoch + 1, dataformats='CHW')
                     writer.add_image(f'original_{i}', original_image, epoch + 1, dataformats='CHW')
+                    writer.add_image(f'original_2_{i}', original_image_2, epoch + 1, dataformats='CHW')
 
             progress_bar.close()
 
@@ -500,7 +503,8 @@ class DiffusionModel:
             print(f"Saved: {', '.join(c for c in components if c)}")
 
 
-    def load_model_weights(self, model, model_path, verbose=False):
+    @staticmethod
+    def load_model_weights(device, model, model_path, verbose=False):
         """
         Loads model weights from a saved checkpoint file.
 
@@ -516,7 +520,7 @@ class DiffusionModel:
                                       missing and unexpected keys. Defaults to False.
         """
         if os.path.exists(model_path):
-            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+            checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
             state_dict_to_load = None
             if isinstance(checkpoint, dict):
@@ -524,21 +528,9 @@ class DiffusionModel:
                     state_dict_to_load = checkpoint["model_state_dict"]
                 else: # Checkpoint is a state_dict itself
                     state_dict_to_load = checkpoint
-                
-                # Load mode if present in checkpoint and set it on the instance
-                if "mode" in checkpoint:
-                    loaded_mode = checkpoint["mode"]
-                    if loaded_mode in ["v_prediction", "noise"]:
-                        self.mode = loaded_mode
-                        print(f"DiffusionModel mode set to '{self.mode}' from checkpoint.")
-                    else:
-                        print(f"Warning: Invalid mode '{loaded_mode}' found in checkpoint. Keeping current mode '{self.mode}'.")
-                else:
-                    print(f"Info: 'mode' not found in checkpoint. Keeping current mode '{self.mode}'.")
+                                
             else: # Loaded object is directly a state_dict
                  state_dict_to_load = checkpoint
-                 print(f"Info: Loaded raw state_dict. 'mode' not available in this format. Keeping current mode '{self.mode}'.")
-
 
             if state_dict_to_load:
                 incompatible_keys = model.load_state_dict(state_dict_to_load, strict=False)
@@ -738,7 +730,7 @@ class ResidualGenerator:
               f"configured for model prediction_type='{self.predict_mode}'.")
 
     @torch.no_grad()
-    def generate_images(self, model, low_resolution_image, num_images=1, num_inference_steps=50):
+    def generate_residuals(self, model, low_resolution_image, num_images=1, num_inference_steps=50):
         """
         Generates images using the provided diffusion model and the configured scheduler.
 
@@ -752,6 +744,10 @@ class ResidualGenerator:
                                      It should accept `x_t` (noisy image) and `t` (timestep)
                                      as input and output a tensor corresponding to its
                                      training objective (either 'v' or 'noise').
+            low_resolution_image (torch.Tensor): The low-resolution image to condition the generation on.
+            Should be of shape [batch_size, img_channels, img_size, img_size].
+            This image is used as context for the model.
+            
             num_images (int, optional): Number of images to generate. Defaults to 1.
             num_inference_steps (int, optional): Number of denoising steps to perform.
                                                  Fewer steps lead to faster generation but
@@ -801,15 +797,10 @@ class ResidualGenerator:
             scheduler_output = self.scheduler.step(model_output, t_step, image_latents)
             image_latents = scheduler_output.prev_sample
 
-        # Post-processing:
-        # The output `image_latents` after the loop is the generated image,
-        # typically in the [-1, 1] range if the model was trained on such data.
-        # Denormalize to [0, 1] for visualization or saving.
-        generated_images = (image_latents + 1.0) / 2.0
-        generated_images = torch.clamp(generated_images, 0.0, 1.0) # Clip to ensure valid range
+        generated_residuals = image_latents
 
         print("Image generation complete.")
-        return generated_images
+        return generated_residuals
 
 if __name__ == "__main__":
     # Example usage ResidualGenerator

@@ -209,6 +209,7 @@ class UNet(nn.Module):
         base_dim=128,               # Base channel dimension
         dim_mults=(1, 2, 4),        # Channel multipliers for each resolution level
         num_resnet_blocks=2,        # Number of ResNet blocks per level
+        context_dim=256,            # Dimension of CLIP context embeddings
         attn_heads=4,               # Number of attention heads
         dropout=0.1
     ):
@@ -216,12 +217,16 @@ class UNet(nn.Module):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.context_dim = context_dim
         self.num_resnet_blocks = num_resnet_blocks
 
         # --- Context Extraction ---
-        self.context_extractor = RRDB(in_channels=in_channels)
-        
-        context_dim = self.context_extractor.in_channels + self.context_extractor.growth_rate * self.context_extractor.num_dense_layers_per_rdb
+        self.context_extractor = ImageContextExtractor(
+            in_channels=in_channels,
+            context_dim=context_dim,
+            hidden_dim_scale_factor=2,
+            preferred_num_groups=32
+        )        
 
         self.lr_encoder = RRDB(in_channels=in_channels)
         # --- Time Embedding ---
@@ -286,11 +291,9 @@ class UNet(nn.Module):
         # -- Bottleneck --
         mid_dim = dims[-1]
         self.bottleneck = nn.ModuleList([])
-        self.bottleneck.append(make_attn_block(mid_dim, attn_heads, context_dim))
         self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
         self.bottleneck.append(make_attn_block(mid_dim, attn_heads, context_dim))
         self.bottleneck.append(make_resnet_block(mid_dim, mid_dim, actual_time_emb_dim))
-        self.bottleneck.append(make_attn_block(mid_dim, attn_heads, context_dim))
 
         # -- Decoder -- 3 attention per block
         self.ups = nn.ModuleList([])
@@ -335,8 +338,6 @@ class UNet(nn.Module):
             lr_encode = self.lr_encoder(context)
             # Extract context from images
             context = self.context_extractor(context)
-            print(f"Context shape: {context.shape}")
-            context = context.view(context.shape[0], context.shape[1], -1).permute(0, 2, 1).contiguous()
         # 1. Initial Convolution
         x = self.init_conv(x) # (B, base_dim, H, W)
 
@@ -386,71 +387,3 @@ class UNet(nn.Module):
         x = self.final_conv(x)
 
         return x
-    
-if __name__ == "__main__":
-    # --- Model Instantiation ---
-    # You can use default UNet parameters or specify your own
-    unet = UNet(
-        in_channels=3,
-        out_channels=3,
-        base_dim=32,
-        dim_mults=(1, 2, 4, 8),
-        num_resnet_blocks=2,
-        attn_heads=4,
-        dropout=0.1
-    )
-    device = "cpu" # Or "cuda" if you have a GPU and want to test there
-    unet.to(device)
-
-    # --- Prepare Dummy Inputs for torchinfo.summary ---
-
-    # 1. Dummy input tensor 'x'
-    # Shape: (batch_size, in_channels, height, width)
-    batch_size = 1
-    dummy_x_shape = (batch_size, unet.in_channels, 256, 256)
-    # torchinfo will create a tensor of this shape on the specified device.
-
-    # 2. Dummy 'time' tensor
-    # Shape: (batch_size,)
-    # Values can be arbitrary for the summary, e.g., zeros or random integers.
-    dummy_time = torch.zeros((batch_size,), dtype=torch.long, device=device)
-
-    # 3. Dummy 'context' tensor
-    # The 'context' in UNet.forward is an image-like tensor that will be
-    # processed by self.context_extractor and self.lr_encoder.
-    # ImageContextExtractor expects 'in_channels' which is unet.in_channels.
-    # Shape: (batch_size, unet.in_channels, context_height, context_width)
-    # Let's use a smaller spatial dimension for context, e.g., 64x64.
-    context_height = 64
-    context_width = 64
-    dummy_context_shape = (batch_size, unet.in_channels, context_height, context_width)
-    dummy_context = torch.randn(dummy_context_shape, device=device)
-
-    # --- Print Model Summary ---
-    print("Model Summary (with dummy x, time, and context):")
-    # Pass input shape for 'x', and actual tensors for 'time' and 'context'
-    # as keyword arguments.
-    summary(
-        unet,
-        input_size=dummy_x_shape, # Shape for the first argument 'x'
-        time=dummy_time,          # Keyword argument for 'time'
-        context=dummy_context,    # Keyword argument for 'context'
-        device=device,
-        col_names=["input_size", "output_size", "num_params", "mult_adds"], # Example col_names
-        verbose=1 # 0 for no header, 1 for full summary, 2 for detailed
-    )
-
-    # --- Print Model Architecture ---
-    print("\nModel Architecture:")
-    print(unet)
-
-    # --- Print Number of Trainable Parameters ---
-    num_params = sum(p.numel() for p in unet.parameters() if p.requires_grad)
-    print(f"\nNumber of trainable parameters: {num_params / 1e6:.2f}M")
-
-    # --- Optional: Print Number of Parameters in Each Layer ---
-    # This can be very verbose for large models.
-    # print("\nParameters per layer:")
-    # for name, param in unet.named_parameters():
-    #     if param.requires_grad:
-    #         print(f"{name}: {param.numel() / 1e6:.2f}M ({param.shape})")
